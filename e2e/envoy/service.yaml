@@ -1,0 +1,11 @@
+version: "3.8"
+
+services:
+  envoy:
+    image: envoyproxy/envoy:v1.24-latest
+    command: -c /etc/envoy/envoy.yaml --component-log-level upstream:debug,http:debug,router:debug,config:debug
+    ports:
+      - "9901:9901"
+      - "13128:10000"
+    volumes:
+      - ./envoy/config.yaml:/etc/envoy/envoy.yaml
