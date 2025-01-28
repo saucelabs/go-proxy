@@ -9,6 +9,7 @@ all: update-helper-images update-test-image run-e2e
 update-helper-images:
 	@$(MAKE) -C dns update-image
 	@$(MAKE) -C sc-2450 update-image
+	@$(MAKE) -C udp update-image
 
 .PHONY: update-test-image
 update-test-image:

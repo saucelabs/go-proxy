@@ -415,6 +415,10 @@ func (p *Proxy) roundTrip(req *http.Request) (*http.Response, error) {
 		return proxyutil.NewResponse(200, http.NoBody, req), nil
 	}
 
+	if isUDPMasque(req) {
+		return p.roundTripUDPMasque(req)
+	}
+
 	res, err := p.rt.RoundTrip(req)
 	if err != nil {
 		return nil, err

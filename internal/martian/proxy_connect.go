@@ -171,10 +171,13 @@ func (p *Proxy) connectSOCKS5(req *http.Request, proxyURL *url.URL) (*http.Respo
 }
 
 func newConnectResponse(req *http.Request) *http.Response {
-	ok := http.StatusOK
+	return newConnectResponseStatus(req, http.StatusOK)
+}
+
+func newConnectResponseStatus(req *http.Request, statusCode int) *http.Response {
 	return &http.Response{
-		Status:     fmt.Sprintf("%d %s", ok, http.StatusText(ok)),
-		StatusCode: ok,
+		Status:     fmt.Sprintf("%d %s", statusCode, http.StatusText(statusCode)),
+		StatusCode: statusCode,
 		Proto:      req.Proto,
 		ProtoMajor: req.ProtoMajor,
 		ProtoMinor: req.ProtoMinor,

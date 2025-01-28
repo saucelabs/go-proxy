@@ -28,6 +28,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1541,6 +1542,100 @@ func TestIntegrationTransparentMITM(t *testing.T) {
 	if !tm.ResponseModified() {
 		t.Errorf("tm.ResponseModified(): got false, want true")
 	}
+}
+
+func TestIntegrationUDPMasque(t *testing.T) {
+	const bufSize = 64
+
+	// UDP echo server.
+	udpEchoServer := func(conn net.PacketConn) error {
+		buf := make([]byte, bufSize)
+		for {
+			n, caddr, err := conn.ReadFrom(buf)
+			if err != nil {
+				if errors.Is(err, net.ErrClosed) {
+					err = nil
+				}
+				return fmt.Errorf("conn.ReadFrom(): got %v, want no error", err)
+			}
+
+			t.Logf("Recv %s: %s\n", caddr, string(buf[:n]))
+
+			if _, err := conn.WriteTo(buf[:n], caddr); err != nil {
+				return fmt.Errorf("conn.WriteTo(): got %v, want no error", err)
+			}
+		}
+	}
+
+	uc, err := net.ListenPacket("udp", "localhost:0")
+	if err != nil {
+		t.Fatalf("net.ListenPacket(): got %v, want no error", err)
+	}
+	defer uc.Close()
+
+	go udpEchoServer(uc)
+
+	h := testHelper{
+		Proxy: func(p *Proxy) {
+			p.AllowHTTP = true
+		},
+	}
+
+	conn, cancel := h.proxyConn(t)
+	defer cancel()
+
+	// GET /.well-known/masque/udp/<host>/<port> HTTP/1.1
+	udpMasqueURL := "/.well-known/masque/udp/127.0.0.1/" + strconv.Itoa(uc.LocalAddr().(*net.UDPAddr).Port)
+	req, err := http.NewRequest(http.MethodGet, udpMasqueURL, http.NoBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", "connect-udp")
+
+	if err := req.Write(conn); err != nil {
+		t.Fatalf("req.Write(): got %v, want no error", err)
+	}
+
+	br := bufio.NewReader(conn)
+
+	res, err := http.ReadResponse(br, req)
+	if err != nil {
+		t.Fatalf("http.ReadResponse(): got %v, want no error", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != 101 {
+		t.Fatalf("res.StatusCode: got %d, want 101", res.StatusCode)
+	}
+	if got, want := res.Header.Get("Connection"), "Upgrade"; got != want {
+		t.Errorf("res.Header.Get(%q): got %q, want %q", "Connection", got, want)
+	}
+	if got, want := res.Header.Get("Upgrade"), "connect-udp"; got != want {
+		t.Errorf("res.Header.Get(%q): got %q, want %q", "Upgrade", got, want)
+	}
+
+	assertUDPEcho := func(msg string) {
+		if _, err := conn.Write([]byte(msg)); err != nil {
+			t.Fatalf("conn.Write(): got %v, want no error", err)
+		}
+
+		buf := make([]byte, bufSize)
+		n, err := br.Read(buf)
+		if err != nil {
+			t.Fatalf("conn.Read(): got %v, want no error", err)
+		}
+		t.Logf("Recv: %s\n", string(buf[:n]))
+
+		if string(buf[:n]) != msg {
+			t.Errorf("conn.Read(): got %q, want %q", buf[:n], msg)
+		}
+	}
+
+	assertUDPEcho("hello")
+	assertUDPEcho("world")
+	conn.(*net.TCPConn).CloseWrite()
+
 }
 
 func TestIntegrationFailedRoundTrip(t *testing.T) {

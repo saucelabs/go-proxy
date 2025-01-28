@@ -1,0 +1,9 @@
+FROM alpine
+
+RUN apk add --no-cache netcat-openbsd
+
+COPY server /usr/bin/server
+ENTRYPOINT ["/usr/bin/server"]
+
+HEALTHCHECK --interval=1s --timeout=3s \
+  CMD nc -z localhost 5005 || exit 1
